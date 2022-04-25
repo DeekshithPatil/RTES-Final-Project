@@ -1,85 +1,8 @@
-/* ========================================================================== */
-/*                                                                            */
-// Sam Siewert, December 2017
-//
-// Sequencer Generic
-//
-// The purpose of this code is to provide an example for how to best
-// sequence a set of periodic services for problems similar to and including
-// the final project in real-time systems.
-//
-// For example: Service_1 for camera frame aquisition
-//              Service_2 for image analysis and timestamping
-//              Service_3 for image processing (difference images)
-//              Service_4 for save time-stamped image to file service
-//              Service_5 for save processed image to file service
-//              Service_6 for send image to remote server to save copy
-//              Service_7 for elapsed time in syslog each minute for debug
-//
-// At least two of the services need to be real-time and need to run on a single
-// core or run without affinity on the SMP cores available to the Linux 
-// scheduler as a group.  All services can be real-time, but you could choose
-// to make just the first 2 real-time and the others best effort.
-//
-// For the standard project, to time-stamp images at the 1 Hz rate with unique
-// clock images (unique second hand / seconds) per image, you might use the 
-// following rates for each service:
-//
-// Sequencer - 30 Hz 
-//                   [gives semaphores to all other services]
-// Service_1 - 3 Hz  , every 10th Sequencer loop
-//                   [buffers 3 images per second]
-// Service_2 - 1 Hz  , every 30th Sequencer loop 
-//                   [time-stamp middle sample image with cvPutText or header]
-// Service_3 - 0.5 Hz, every 60th Sequencer loop
-//                   [difference current and previous time stamped images]
-// Service_4 - 1 Hz, every 30th Sequencer loop
-//                   [save time stamped image with cvSaveImage or write()]
-// Service_5 - 0.5 Hz, every 60th Sequencer loop
-//                   [save difference image with cvSaveImage or write()]
-// Service_6 - 1 Hz, every 30th Sequencer loop
-//                   [write current time-stamped image to TCP socket server]
-// Service_7 - 0.1 Hz, every 300th Sequencer loop
-//                   [syslog the time for debug]
-//
-// With the above, priorities by RM policy would be:
-//
-// Sequencer = RT_MAX	@ 30 Hz
-// Servcie_1 = RT_MAX-1	@ 3 Hz
-// Service_2 = RT_MAX-2	@ 1 Hz
-// Service_3 = RT_MAX-3	@ 0.5 Hz
-// Service_4 = RT_MAX-2	@ 1 Hz
-// Service_5 = RT_MAX-3	@ 0.5 Hz
-// Service_6 = RT_MAX-2	@ 1 Hz
-// Service_7 = RT_MIN	0.1 Hz
-//
-// Here are a few hardware/platform configuration settings on your Jetson
-// that you should also check before running this code:
-//
-// 1) Check to ensure all your CPU cores on in an online state.
-//
-// 2) Check /sys/devices/system/cpu or do lscpu.
-//
-//    Tegra is normally configured to hot-plug CPU cores, so to make all
-//    available, as root do:
-//
-//    echo 0 > /sys/devices/system/cpu/cpuquiet/tegra_cpuquiet/enable
-//    echo 1 > /sys/devices/system/cpu/cpu1/online
-//    echo 1 > /sys/devices/system/cpu/cpu2/online
-//    echo 1 > /sys/devices/system/cpu/cpu3/online
-//
-// 3) Check for precision time resolution and support with cat /proc/timer_list
-//
-// 4) Ideally all printf calls should be eliminated as they can interfere with
-//    timing.  They should be replaced with an in-memory event logger or at
-//    least calls to syslog.
-//
-// 5) For simplicity, you can just allow Linux to dynamically load balance
-//    threads to CPU cores (not set affinity) and as long as you have more
-//    threads than you have cores, this is still an over-subscribed system
-//    where RM policy is required over the set of cores.
-
-// This is necessary for CPU affinity macros in Linux
+/*
+* Brief - RTES Final Project Code
+* Team members - Jahnavi Pinnamaneni, japi8358@colorado.edu
+*				 Deekshith Reddy Patil, patil.deekshithreddy@colorado.edu
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,11 +31,11 @@
 #define ERROR (-1)
 #define OK (0)
 
-#define NUM_THREADS (7+1)
+#define NUM_THREADS (3+1)
 
 int abortTest=FALSE;
 int abortS1=FALSE, abortS2=FALSE, abortS3=FALSE, abortS4=FALSE, abortS5=FALSE, abortS6=FALSE, abortS7=FALSE;
-sem_t semS1, semS2, semS3, semS4, semS5, semS6, semS7;
+sem_t semS1, semS2, semS3;
 struct timeval start_time_val;
 
 typedef struct
@@ -127,10 +50,7 @@ void *Sequencer(void *threadp);
 void *Service_1(void *threadp);
 void *Service_2(void *threadp);
 void *Service_3(void *threadp);
-void *Service_4(void *threadp);
-void *Service_5(void *threadp);
-void *Service_6(void *threadp);
-void *Service_7(void *threadp);
+
 double getTimeMsec(void);
 void print_scheduler(void);
 
@@ -213,30 +133,24 @@ int main(void)
     pid_t mainpid;
     cpu_set_t allcpuset;
 
-    printf("Starting Sequencer Demo\n");
+    printf("Starting Final Project Demo\n");
     gettimeofday(&start_time_val, (struct timezone *)0);
     gettimeofday(&current_time_val, (struct timezone *)0);
-    syslog(LOG_CRIT, "Sequencer @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
 
-   printf("System has %d processors configured and %d available.\n", get_nprocs_conf(), get_nprocs());
+	printf("System has %d processors configured and %d available.\n", get_nprocs_conf(), get_nprocs());
 
-   CPU_ZERO(&allcpuset);
+	CPU_ZERO(&allcpuset);
 
-   for(i=0; i < NUM_CPU_CORES; i++)
-       CPU_SET(i, &allcpuset);
+	for(i=0; i < NUM_CPU_CORES; i++)
+		CPU_SET(i, &allcpuset);
 
-   printf("Using CPUS=%d from total available.\n", CPU_COUNT(&allcpuset));
+	printf("Using CPUS=%d from total available.\n", CPU_COUNT(&allcpuset));
 
 
     // initialize the sequencer semaphores
-    //
     if (sem_init (&semS1, 0, 0)) { printf ("Failed to initialize S1 semaphore\n"); exit (-1); }
     if (sem_init (&semS2, 0, 0)) { printf ("Failed to initialize S2 semaphore\n"); exit (-1); }
     if (sem_init (&semS3, 0, 0)) { printf ("Failed to initialize S3 semaphore\n"); exit (-1); }
-    if (sem_init (&semS4, 0, 0)) { printf ("Failed to initialize S4 semaphore\n"); exit (-1); }
-    if (sem_init (&semS5, 0, 0)) { printf ("Failed to initialize S5 semaphore\n"); exit (-1); }
-    if (sem_init (&semS6, 0, 0)) { printf ("Failed to initialize S6 semaphore\n"); exit (-1); }
-    if (sem_init (&semS7, 0, 0)) { printf ("Failed to initialize S7 semaphore\n"); exit (-1); }
 
     mainpid=getpid();
 
@@ -322,50 +236,6 @@ int main(void)
         printf("pthread_create successful for service 3\n");
 
 
-    // Service_4 = RT_MAX-2	@ 1 Hz
-    //
-    rt_param[4].sched_priority=rt_max_prio-2;
-    pthread_attr_setschedparam(&rt_sched_attr[4], &rt_param[4]);
-    rc=pthread_create(&threads[4], &rt_sched_attr[4], Service_4, (void *)&(threadParams[4]));
-    if(rc < 0)
-        perror("pthread_create for service 4");
-    else
-        printf("pthread_create successful for service 4\n");
-
-
-    // Service_5 = RT_MAX-3	@ 0.5 Hz
-    //
-    rt_param[5].sched_priority=rt_max_prio-3;
-    pthread_attr_setschedparam(&rt_sched_attr[5], &rt_param[5]);
-    rc=pthread_create(&threads[5], &rt_sched_attr[5], Service_5, (void *)&(threadParams[5]));
-    if(rc < 0)
-        perror("pthread_create for service 5");
-    else
-        printf("pthread_create successful for service 5\n");
-
-
-    // Service_6 = RT_MAX-2	@ 1 Hz
-    //
-    rt_param[6].sched_priority=rt_max_prio-2;
-    pthread_attr_setschedparam(&rt_sched_attr[6], &rt_param[6]);
-    rc=pthread_create(&threads[6], &rt_sched_attr[6], Service_6, (void *)&(threadParams[6]));
-    if(rc < 0)
-        perror("pthread_create for service 6");
-    else
-        printf("pthread_create successful for service 6\n");
-
-
-    // Service_7 = RT_MIN	0.1 Hz
-    //
-    rt_param[7].sched_priority=rt_min_prio;
-    pthread_attr_setschedparam(&rt_sched_attr[7], &rt_param[7]);
-    rc=pthread_create(&threads[7], &rt_sched_attr[7], Service_7, (void *)&(threadParams[7]));
-    if(rc < 0)
-        perror("pthread_create for service 7");
-    else
-        printf("pthread_create successful for service 7\n");
-
-
     // Wait for service threads to initialize and await release by sequencer.
     //
     // Note that the sleep is not necessary of RT service threads are created wtih 
@@ -417,9 +287,7 @@ void *Sequencer(void *threadp)
     {
         delay_cnt=0; residual=0.0;
 
-        //gettimeofday(&current_time_val, (struct timezone *)0);
-        //syslog(LOG_CRIT, "Sequencer thread prior to delay @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-        do
+       do
         {
             rc=nanosleep(&delay_time, &remaining_time);
 
@@ -441,13 +309,8 @@ void *Sequencer(void *threadp)
 
         seqCnt++;
         gettimeofday(&current_time_val, (struct timezone *)0);
-        // syslog(LOG_CRIT, "Sequencer cycle %llu @ sec=%d, msec=%d\n", seqCnt, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-
 
         if(delay_cnt > 1) printf("Sequencer looping delay %d\n", delay_cnt);
-
-
-        // Release each service at a sub-rate of the generic sequencer rate
 
         // Servcie_1 = RT_MAX-1	@ 3 Hz
         if((seqCnt % 10) == 0) sem_post(&semS1);
@@ -458,17 +321,6 @@ void *Sequencer(void *threadp)
         // Service_3 = RT_MAX-3	@ 0.5 Hz
         if((seqCnt % 60) == 0) sem_post(&semS3);
 
-        // Service_4 = RT_MAX-2	@ 1 Hz
-        if((seqCnt % 30) == 0) sem_post(&semS4);
-
-        // Service_5 = RT_MAX-3	@ 0.5 Hz
-        if((seqCnt % 60) == 0) sem_post(&semS5);
-
-        // Service_6 = RT_MAX-2	@ 1 Hz
-        if((seqCnt % 30) == 0) sem_post(&semS6);
-
-        // Service_7 = RT_MIN	0.1 Hz
-        if((seqCnt % 300) == 0) sem_post(&semS7);
 
         gettimeofday(&current_time_val, (struct timezone *)0);
         syslog(LOG_CRIT, "Sequencer release all sub-services @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
@@ -476,16 +328,13 @@ void *Sequencer(void *threadp)
     } while(!abortTest && (seqCnt < threadParams->sequencePeriods));
 
     sem_post(&semS1); sem_post(&semS2); sem_post(&semS3);
-    sem_post(&semS4); sem_post(&semS5); sem_post(&semS6);
-    sem_post(&semS7);
+
     abortS1=TRUE; abortS2=TRUE; abortS3=TRUE;
     abortS4=TRUE; abortS5=TRUE; abortS6=TRUE;
     abortS7=TRUE;
 
     pthread_exit((void *)0);
 }
-
-
 
 void *Service_1(void *threadp)
 {
@@ -499,8 +348,6 @@ void *Service_1(void *threadp)
     struct timespec thread_dt = {0, 0};
 
     gettimeofday(&current_time_val, (struct timezone *)0);
-    // syslog(LOG_CRIT, "Frame Sampler thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    // printf("Frame Sampler thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
 
     while(!abortS1)
     {
@@ -537,8 +384,6 @@ void *Service_2(void *threadp)
     struct timespec thread_dt = {0, 0};
 
     gettimeofday(&current_time_val, (struct timezone *)0);
-    // syslog(LOG_CRIT, "Time-stamp with Image Analysis thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    // printf("Time-stamp with Image Analysis thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
 
     while(!abortS2)
     {
@@ -572,8 +417,6 @@ void *Service_3(void *threadp)
     struct timespec thread_dt = {0, 0};
 
     gettimeofday(&current_time_val, (struct timezone *)0);
-    // syslog(LOG_CRIT, "Difference Image Proc thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    // printf("Difference Image Proc thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
 
     while(!abortS3)
     {
@@ -586,150 +429,6 @@ void *Service_3(void *threadp)
     
         clock_gettime(CLOCK_REALTIME, &finish_time); 
 
-        delta_t(&finish_time, &start_time, &thread_dt);
-
-        syslog(LOG_CRIT,"\nran for %ld microsec\n",
-	    (thread_dt.tv_nsec / NSEC_PER_MICROSEC));
-    }
-
-    pthread_exit((void *)0);
-}
-
-void *Service_4(void *threadp)
-{
-    struct timeval current_time_val;
-    double current_time;
-    unsigned long long S4Cnt=0;
-    threadParams_t *threadParams = (threadParams_t *)threadp;
-
-    struct timespec start_time = {0, 0};
-    struct timespec finish_time = {0, 0};
-    struct timespec thread_dt = {0, 0};
-
-    gettimeofday(&current_time_val, (struct timezone *)0);
-    // syslog(LOG_CRIT, "Time-stamp Image Save to File thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    // printf("Time-stamp Image Save to File thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-
-    while(!abortS4)
-    {
-        sem_wait(&semS4);
-
-        clock_gettime(CLOCK_REALTIME, &start_time);
-
-        S4Cnt++;
-
-        gettimeofday(&current_time_val, (struct timezone *)0);
-        syslog(LOG_CRIT, "Time-stamp Image Save to File release %llu @ sec=%d, msec=%d\n", S4Cnt, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    
-        clock_gettime(CLOCK_REALTIME, &finish_time); 
-        delta_t(&finish_time, &start_time, &thread_dt);
-
-        syslog(LOG_CRIT,"\nran for %ld microsec\n",
-	    (thread_dt.tv_nsec / NSEC_PER_MICROSEC));
-    }
-
-    pthread_exit((void *)0);
-}
-
-void *Service_5(void *threadp)
-{
-    struct timeval current_time_val;
-    double current_time;
-    unsigned long long S5Cnt=0;
-    threadParams_t *threadParams = (threadParams_t *)threadp;
-
-    struct timespec start_time = {0, 0};
-    struct timespec finish_time = {0, 0};
-    struct timespec thread_dt = {0, 0};
-
-    gettimeofday(&current_time_val, (struct timezone *)0);
-    // syslog(LOG_CRIT, "Processed Image Save to File thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    // printf("Processed Image Save to File thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-
-    while(!abortS5)
-    {
-        sem_wait(&semS5);
-
-        clock_gettime(CLOCK_REALTIME, &start_time);
-
-        S5Cnt++;
-
-        gettimeofday(&current_time_val, (struct timezone *)0);
-        syslog(LOG_CRIT, "Processed Image Save to File release %llu @ sec=%d, msec=%d\n", S5Cnt, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    
-        clock_gettime(CLOCK_REALTIME, &finish_time); 
-        delta_t(&finish_time, &start_time, &thread_dt);
-
-        syslog(LOG_CRIT,"\nran for %ld microsec\n",
-	    (thread_dt.tv_nsec / NSEC_PER_MICROSEC));
-    }
-
-    pthread_exit((void *)0);
-}
-
-void *Service_6(void *threadp)
-{
-    struct timeval current_time_val;
-    double current_time;
-    unsigned long long S6Cnt=0;
-    threadParams_t *threadParams = (threadParams_t *)threadp;
-
-    struct timespec start_time = {0, 0};
-    struct timespec finish_time = {0, 0};
-    struct timespec thread_dt = {0, 0};
-
-    gettimeofday(&current_time_val, (struct timezone *)0);
-    // syslog(LOG_CRIT, "Send Time-stamped Image to Remote thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    // printf("Send Time-stamped Image to Remote thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-
-    while(!abortS6)
-    {
-        sem_wait(&semS6);
-
-        clock_gettime(CLOCK_REALTIME, &start_time);
-
-        S6Cnt++;
-
-        gettimeofday(&current_time_val, (struct timezone *)0);
-        syslog(LOG_CRIT, "Send Time-stamped Image to Remote release %llu @ sec=%d, msec=%d\n", S6Cnt, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    
-        clock_gettime(CLOCK_REALTIME, &finish_time); 
-        delta_t(&finish_time, &start_time, &thread_dt);
-
-        syslog(LOG_CRIT,"\nran for %ld microsec\n",
-	    (thread_dt.tv_nsec / NSEC_PER_MICROSEC));
-    }
-
-    pthread_exit((void *)0);
-}
-
-void *Service_7(void *threadp)
-{
-    struct timeval current_time_val;
-    double current_time;
-    unsigned long long S7Cnt=0;
-    threadParams_t *threadParams = (threadParams_t *)threadp;
-
-    struct timespec start_time = {0, 0};
-    struct timespec finish_time = {0, 0};
-    struct timespec thread_dt = {0, 0};
-
-    gettimeofday(&current_time_val, (struct timezone *)0);
-    // syslog(LOG_CRIT, "10 sec Tick Debug thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    // printf("10 sec Tick Debug thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-
-    while(!abortS7)
-    {
-        sem_wait(&semS7);
-
-        clock_gettime(CLOCK_REALTIME, &start_time);
-
-        S7Cnt++;
-
-        gettimeofday(&current_time_val, (struct timezone *)0);
-        syslog(LOG_CRIT, "10 Sec Tick Debug release %llu @ sec=%d, msec=%d\n", S7Cnt, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    
-        clock_gettime(CLOCK_REALTIME, &finish_time); 
         delta_t(&finish_time, &start_time, &thread_dt);
 
         syslog(LOG_CRIT,"\nran for %ld microsec\n",
