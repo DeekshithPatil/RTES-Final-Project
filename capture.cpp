@@ -291,9 +291,9 @@ void *Sequencer(void *threadp)
         {
             rc=nanosleep(&delay_time, &remaining_time);
 
-			printf("rc = %d, seqcnt = %d\n",rc,seqCnt);
+			// printf("rc = %d, seqcnt = %d\n",rc,seqCnt);
 
-            if(rc == EINTR)
+            if(errno == EINTR)
             { 
                 residual = remaining_time.tv_sec + ((double)remaining_time.tv_nsec / (double)NANOSEC_PER_SEC);
 
