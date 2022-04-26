@@ -244,9 +244,9 @@ int main(void)
     //
     // usleep(1000000);
  
-    // Create Sequencer thread, which like a cyclic executive, is highest prio
+    // Create Sequencer thread, which like a cyclic executive, is highest priority
     printf("Start sequencer\n");
-    threadParams[0].sequencePeriods=900;
+    threadParams[0].sequencePeriods=5000;
 
     // Sequencer = RT_MAX	@ 30 Hz
     //
@@ -271,7 +271,7 @@ int main(void)
 void *Sequencer(void *threadp)
 {
     struct timeval current_time_val;
-    struct timespec delay_time = {0,33333333}; // delay for 33.33 msec, 30 Hz
+	struct timespec delay_time = {0, 1000000}; // delay for 1 msec, 10^3 Hz
     struct timespec remaining_time;
     double current_time;
     double residual;
@@ -312,14 +312,22 @@ void *Sequencer(void *threadp)
 
         if(delay_cnt > 1) printf("Sequencer looping delay %d\n", delay_cnt);
 
-        // Servcie_1 = RT_MAX-1	@ 3 Hz
-        if((seqCnt % 10) == 0) sem_post(&semS1);
+		if((seqCnt % 166) == 0)
+		{
+			//Release all tasks at 6 Hz, i.e 166 msec
+			sem_post(&semS1);
+			sem_post(&semS2);
+			sem_post(&semS3);
+		}
 
-        // Service_2 = RT_MAX-2	@ 1 Hz
-        if((seqCnt % 30) == 0) sem_post(&semS2);
+        // // Servcie_1 = RT_MAX-1	@ 3 Hz
+        // if((seqCnt % 10) == 0) sem_post(&semS1);
 
-        // Service_3 = RT_MAX-3	@ 0.5 Hz
-        if((seqCnt % 60) == 0) sem_post(&semS3);
+        // // Service_2 = RT_MAX-2	@ 1 Hz
+        // if((seqCnt % 30) == 0) sem_post(&semS2);
+
+        // // Service_3 = RT_MAX-3	@ 0.5 Hz
+        // if((seqCnt % 60) == 0) sem_post(&semS3);
 
 
         gettimeofday(&current_time_val, (struct timezone *)0);
