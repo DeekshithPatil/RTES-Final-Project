@@ -306,6 +306,8 @@ void *Sequencer(void *threadp)
                 perror("Sequencer nanosleep");
                 exit(-1);
             }
+
+			errno = 0;
            
         } while((residual > 0.0) && (delay_cnt < 100));
 
