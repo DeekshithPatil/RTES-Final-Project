@@ -291,7 +291,7 @@ void *Sequencer(void *threadp)
         {
             rc=nanosleep(&delay_time, &remaining_time);
 
-			printf("rc = %d\n",rc);
+			printf("rc = %d, seqcnt = %d\n",rc,seqCnt);
 
             if(rc == EINTR)
             { 
