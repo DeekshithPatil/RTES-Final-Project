@@ -293,21 +293,23 @@ void *Sequencer(void *threadp)
 
 			// printf("rc = %d, seqcnt = %d\n",rc,seqCnt);
 
-            if(errno == EINTR)
-            { 
-                residual = remaining_time.tv_sec + ((double)remaining_time.tv_nsec / (double)NANOSEC_PER_SEC);
+			if(rc < 0)
+			{
+				if(errno == EINTR)
+				{ 
+					residual = remaining_time.tv_sec + ((double)remaining_time.tv_nsec / (double)NANOSEC_PER_SEC);
 
-                if(residual > 0.0) printf("residual=%lf, sec=%d, nsec=%d\n", residual, (int)remaining_time.tv_sec, (int)remaining_time.tv_nsec);
- 
-                delay_cnt++;
-            }
-            else if(rc < 0)
-            {
-                perror("Sequencer nanosleep");
-                exit(-1);
-            }
+					if(residual > 0.0) printf("residual=%lf, sec=%d, nsec=%d\n", residual, (int)remaining_time.tv_sec, (int)remaining_time.tv_nsec);
+	
+					delay_cnt++;
+				}
 
-			errno = 0;
+				else
+				{
+					perror("Sequencer nanosleep");
+                	exit(-1);
+				}
+			}
            
         } while((residual > 0.0) && (delay_cnt < 100));
 
