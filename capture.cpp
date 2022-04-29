@@ -34,7 +34,7 @@
 #define NUM_THREADS (3+1)
 
 int abortTest=FALSE;
-int abortS1=FALSE, abortS2=FALSE, abortS3=FALSE, abortS4=FALSE, abortS5=FALSE, abortS6=FALSE, abortS7=FALSE;
+int abortS1=FALSE, abortS2=FALSE, abortS3=FALSE;
 sem_t semS1, semS2, semS3;
 struct timeval start_time_val;
 
@@ -185,7 +185,7 @@ int main(void)
       rc=pthread_attr_init(&rt_sched_attr[i]);
       rc=pthread_attr_setinheritsched(&rt_sched_attr[i], PTHREAD_EXPLICIT_SCHED);
       rc=pthread_attr_setschedpolicy(&rt_sched_attr[i], SCHED_FIFO);
-      //rc=pthread_attr_setaffinity_np(&rt_sched_attr[i], sizeof(cpu_set_t), &threadcpu);
+      rc=pthread_attr_setaffinity_np(&rt_sched_attr[i], sizeof(cpu_set_t), &threadcpu);
 
       rt_param[i].sched_priority=rt_max_prio-i;
       pthread_attr_setschedparam(&rt_sched_attr[i], &rt_param[i]);
@@ -227,7 +227,7 @@ int main(void)
 
     // Service_3 = RT_MAX-3	@ 0.5 Hz
     //
-    rt_param[3].sched_priority=rt_max_prio-3;
+    rt_param[3].sched_priority=rt_max_prio-2;
     pthread_attr_setschedparam(&rt_sched_attr[3], &rt_param[3]);
     rc=pthread_create(&threads[3], &rt_sched_attr[3], Service_3, (void *)&(threadParams[3]));
     if(rc < 0)
@@ -246,7 +246,7 @@ int main(void)
  
     // Create Sequencer thread, which like a cyclic executive, is highest priority
     printf("Start sequencer\n");
-    threadParams[0].sequencePeriods=5000;
+    threadParams[0].sequencePeriods=60;
 
     // Sequencer = RT_MAX	@ 30 Hz
     //
@@ -271,7 +271,7 @@ int main(void)
 void *Sequencer(void *threadp)
 {
     struct timeval current_time_val;
-	struct timespec delay_time = {0, 1000000}; // delay for 1 msec, 10^3 Hz
+	struct timespec delay_time = {0, 83000000}; // delay for 83 msec, 12 Hz
     struct timespec remaining_time;
     double current_time;
     double residual;
@@ -318,22 +318,13 @@ void *Sequencer(void *threadp)
 
         if(delay_cnt > 1) printf("Sequencer looping delay %d\n", delay_cnt);
 
-		if((seqCnt % 166) == 0)
+		if((seqCnt % 2) == 0)
 		{
 			//Release all tasks at 6 Hz, i.e 166 msec
 			sem_post(&semS1);
 			sem_post(&semS2);
 			sem_post(&semS3);
 		}
-
-        // // Servcie_1 = RT_MAX-1	@ 3 Hz
-        // if((seqCnt % 10) == 0) sem_post(&semS1);
-
-        // // Service_2 = RT_MAX-2	@ 1 Hz
-        // if((seqCnt % 30) == 0) sem_post(&semS2);
-
-        // // Service_3 = RT_MAX-3	@ 0.5 Hz
-        // if((seqCnt % 60) == 0) sem_post(&semS3);
 
 
         gettimeofday(&current_time_val, (struct timezone *)0);
@@ -344,8 +335,7 @@ void *Sequencer(void *threadp)
     sem_post(&semS1); sem_post(&semS2); sem_post(&semS3);
 
     abortS1=TRUE; abortS2=TRUE; abortS3=TRUE;
-    abortS4=TRUE; abortS5=TRUE; abortS6=TRUE;
-    abortS7=TRUE;
+
 
     pthread_exit((void *)0);
 }
