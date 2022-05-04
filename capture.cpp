@@ -1,9 +1,16 @@
 /*
-* Brief - RTES Final Project Code
-* Team members - Jahnavi Pinnamaneni, japi8358@colorado.edu
+* @brief - RTES Final Project Code
+* @desc - This code schedules 3 tasks from within the sequencer task. The 3 tasks include:
+            Image acquisition task
+            Hough Line transform task
+            Hough Elliptical transform task
+        All these tasks are scheduled at 6Hz each. 
+        Image acquisition task has the highest priority and both the transforms are at a equal lower priority.
+* @authors- Jahnavi Pinnamaneni, japi8358@colorado.edu
 *				 Deekshith Reddy Patil, patil.deekshithreddy@colorado.edu
 */
 
+/* Header file initialization*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -33,6 +40,7 @@
 
 #define NUM_THREADS (3+1)
 
+/* Declaration of Global variables */
 int abortTest=FALSE;
 int abortS1=FALSE, abortS2=FALSE, abortS3=FALSE;
 sem_t semS1, semS2, semS3;
@@ -44,16 +52,54 @@ typedef struct
     unsigned long long sequencePeriods;
 } threadParams_t;
 
-
+/*
+* @desc - This function schedules the service 1 at a frequency of 6hz. The sequencer itself runs at a frequency of 6Hz
+* @param - struct threadparam_t
+* @returns void
+*/
 void *Sequencer(void *threadp);
 
+/*
+* @desc - This function performs image acquisition. It runs at a frequency of 6Hz. 
+*         Once the image frame is captured, it releases the semaphores for the transform functions.
+* @param - struct threadparam_t
+* @returns void
+*/
 void *Service_1(void *threadp);
+
+/*
+* @desc - After receiving the semaphore from the service 1, this function performs Hough Line Transform at a frequency of 6Hz.
+* @param - struct threadparam_t
+* @returns void
+*/
 void *Service_2(void *threadp);
+
+/*
+* @desc - After receiving the semaphore from the service 1, this function performs Hough Elliptical Transform at a frequency of 6Hz.
+* @param - struct threadparam_t
+* @returns void
+*/
 void *Service_3(void *threadp);
 
+/*
+* @desc - this fucntion returns the number of milliseconds since the start of the program
+* @param - void
+* @return - double
+*/
 double getTimeMsec(void);
+
+/*
+* @desc - this function returns the current scheduler type
+* @param - none
+* @return - void
+*/
 void print_scheduler(void);
 
+/*
+* @desc - this function returns the difference between the two timespec values
+* @param - timespec *stop, timespec *start, timespec *delta_t
+* @return - integer
+*/
 int delta_t(struct timespec *stop, struct timespec *start, struct timespec *delta_t)
 {
   int dt_sec=stop->tv_sec - start->tv_sec;
@@ -82,7 +128,7 @@ int delta_t(struct timespec *stop, struct timespec *start, struct timespec *delt
 
 	  else // dt_nsec < 0 means stop is earlier than start
 	  {
-	         printf("stop is earlier than start\n");
+	     printf("stop is earlier than start\n");
 		 return(ERROR);  
 	  }
   }
@@ -194,12 +240,7 @@ int main(void)
     }
    
     printf("Service threads will run on %d CPU cores\n", CPU_COUNT(&threadcpu));
-
-    // Create Service threads which will block awaiting release for:
-    //
-
-    // Servcie_1 = RT_MAX-1	@ 3 Hz
-    //
+ 
     rt_param[1].sched_priority=rt_max_prio-1;
     pthread_attr_setschedparam(&rt_sched_attr[1], &rt_param[1]);
     rc=pthread_create(&threads[1],               // pointer to thread descriptor
@@ -214,8 +255,7 @@ int main(void)
         printf("pthread_create successful for service 1\n");
 
 
-    // Service_2 = RT_MAX-2	@ 1 Hz
-    //
+
     rt_param[2].sched_priority=rt_max_prio-2;
     pthread_attr_setschedparam(&rt_sched_attr[2], &rt_param[2]);
     rc=pthread_create(&threads[2], &rt_sched_attr[2], Service_2, (void *)&(threadParams[2]));
@@ -225,8 +265,7 @@ int main(void)
         printf("pthread_create successful for service 2\n");
 
 
-    // Service_3 = RT_MAX-3	@ 0.5 Hz
-    //
+    
     rt_param[3].sched_priority=rt_max_prio-2;
     pthread_attr_setschedparam(&rt_sched_attr[3], &rt_param[3]);
     rc=pthread_create(&threads[3], &rt_sched_attr[3], Service_3, (void *)&(threadParams[3]));
@@ -235,21 +274,11 @@ int main(void)
     else
         printf("pthread_create successful for service 3\n");
 
-
-    // Wait for service threads to initialize and await release by sequencer.
-    //
-    // Note that the sleep is not necessary of RT service threads are created wtih 
-    // correct POSIX SCHED_FIFO priorities compared to non-RT priority of this main
-    // program.
-    //
-    // usleep(1000000);
  
     // Create Sequencer thread, which like a cyclic executive, is highest priority
     printf("Start sequencer\n");
     threadParams[0].sequencePeriods=60;
 
-    // Sequencer = RT_MAX	@ 30 Hz
-    //
     rt_param[0].sched_priority=rt_max_prio;
     pthread_attr_setschedparam(&rt_sched_attr[0], &rt_param[0]);
     rc=pthread_create(&threads[0], &rt_sched_attr[0], Sequencer, (void *)&(threadParams[0]));
@@ -290,8 +319,6 @@ void *Sequencer(void *threadp)
        do
         {
             rc=nanosleep(&delay_time, &remaining_time);
-
-			// printf("rc = %d, seqcnt = %d\n",rc,seqCnt);
 
 			if(rc < 0)
 			{
