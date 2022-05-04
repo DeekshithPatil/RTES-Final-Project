@@ -1,3 +1,10 @@
+/*
+* @file - This code performs the latency check where a GPIO interrupt when triggered would release a
+          semaphore to a higher priority thread which would inturn toggle the LED.
+* @authors - Deekshith Reddy Patil and Jahnavi Pinnamaneni  
+*/
+
+/* Header file initialization */
 #include <wiringPi.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,15 +26,22 @@
 
 
 void print_scheduler(void);
+
+/*
+* @desc - this function waits on a semaphore to toggle an LED
+*/
 void *Service_1(void *threadp);
 sem_t semS1;
 
+/* 
+* @desc - GPIO Interrupt Handler
+*/
 void myInterrupt()
 {
-	//printf("Hello\n");
-sem_post(&semS1);	
+  sem_post(&semS1);	
 }
 
+/* Application Entry Point */
 int main (void)
 {
 	 int i, rc, scope;
